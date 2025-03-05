@@ -13,7 +13,7 @@ from folium.plugins import HeatMap # type: ignore
 sns.set(style='darkgrid')
 
 # Load Data
-df = pd.read_csv("all_data.csv")
+df = pd.read_csv("dashboard/all_data.csv")
 
 # Konversi Kolom ke Format Datetime
 df["dteday"] = pd.to_datetime(df["dteday"])
