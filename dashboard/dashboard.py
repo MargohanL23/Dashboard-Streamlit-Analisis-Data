@@ -2,8 +2,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st # type: ignore
-from babel.numbers import format_currency # type: ignore
-sns.set(style='dark')
 from datetime import datetime
 import folium # type: ignore
 from streamlit_folium import folium_static # type: ignore
@@ -13,7 +11,7 @@ from folium.plugins import HeatMap # type: ignore
 sns.set(style='darkgrid')
 
 # Load Data
-df = pd.read_csv("dashboard/all_data.csv")
+df = pd.read_csv("all_data.csv")
 
 # Konversi Kolom ke Format Datetime
 df["dteday"] = pd.to_datetime(df["dteday"])
@@ -33,114 +31,133 @@ main_df = df[(df["dteday"] >= str(start_date)) & (df["dteday"] <= str(end_date))
 st.title("🚲 Bike Sharing Dashboard")
 st.caption("Analisis data peminjaman sepeda berdasarkan berbagai faktor.")
 
-# -- VISUALISASI 1: Peminjaman Sepeda per Jam --
-st.subheader("Distribusi Peminjaman Sepeda Berdasarkan Jam")
+# -- VISUALISASI 1: Tren Jumlah Peminjaman Sepeda Sepanjang Waktu --
+st.subheader("1. Tren Jumlah Peminjaman Sepeda Sepanjang Waktu")
 
-hourly_df = main_df.groupby("hr")["cnt_hour"].mean().reset_index()
+daily_df = main_df.groupby("dteday")["cnt_day"].sum().reset_index()
 
 fig, ax = plt.subplots(figsize=(12, 6))
-sns.lineplot(x="hr", y="cnt_hour", data=hourly_df, marker="o", color="#90CAF9", linewidth=2, ax=ax)
-ax.set_xlabel("Jam", fontsize=12)
+sns.lineplot(x="dteday", y="cnt_day", data=daily_df, marker="o", color="#90CAF9", linewidth=2, ax=ax)
+ax.set_xlabel("Tanggal", fontsize=12)
 ax.set_ylabel("Jumlah Peminjaman Sepeda", fontsize=12)
-ax.set_title("Rata-rata Peminjaman Sepeda Berdasarkan Jam", fontsize=14)
+ax.set_title("Tren Jumlah Peminjaman Sepeda Sepanjang Waktu", fontsize=14)
 st.pyplot(fig)
 
-st.write("🔍 **Kesimpulan:** Jumlah peminjaman sepeda meningkat pada jam sibuk, terutama di pagi dan sore hari saat orang berangkat dan pulang kerja.")
+st.write("🔍 **Kesimpulan:** Jumlah peminjaman sepeda menunjukkan fluktuasi yang jelas sepanjang waktu, dengan pola musiman yang terlihat.")
 
-# -- VISUALISASI 2: Pengaruh Musim terhadap Peminjaman --
-st.subheader("Pengaruh Musim terhadap Peminjaman Sepeda")
+# -- VISUALISASI 2: Pengaruh Faktor Cuaca terhadap Peminjaman --
+st.subheader("2. Pengaruh Faktor Cuaca terhadap Peminjaman Sepeda")
 
-season_df = main_df.groupby("season_hour")["cnt_hour"].mean().reset_index()
-season_labels = {1: "Spring", 2: "Summer", 3: "Fall", 4: "Winter"}
-season_df["season_hour"] = season_df["season_hour"].map(season_labels)
+weather_resampled = main_df.resample('M', on='dteday').agg({
+    'temp_day': 'mean',
+    'hum_day': 'mean',
+    'windspeed_day': 'mean',
+    'cnt_day': 'sum'
+}).reset_index()
 
-fig, ax = plt.subplots(figsize=(10, 5))
-sns.barplot(x="season_hour", y="cnt_hour", data=season_df, palette="coolwarm", ax=ax)
-ax.set_xlabel("Musim", fontsize=12)
-ax.set_ylabel("Rata-rata Peminjaman Sepeda", fontsize=12)
-ax.set_title("Rata-rata Peminjaman Sepeda Berdasarkan Musim", fontsize=14)
-st.pyplot(fig)
+# Mengubah format tanggal
+weather_resampled['dteday'] = weather_resampled['dteday'].dt.strftime('%Y-%m')
 
-st.write("🔍 **Kesimpulan:** Musim gugur memiliki tingkat peminjaman tertinggi, sedangkan musim semi memiliki tingkat peminjaman terendah.")
-
-# -- VISUALISASI 3: Hubungan Suhu dan Peminjaman Sepeda --
-st.subheader("Hubungan Antara Suhu dan Peminjaman Sepeda")
-
-fig, ax = plt.subplots(figsize=(10, 5))
-sns.scatterplot(x="temp_hour", y="cnt_hour", data=main_df, alpha=0.5, color="#FFA07A", ax=ax)
-ax.set_xlabel("Suhu (Normalized)", fontsize=12)
-ax.set_ylabel("Jumlah Peminjaman Sepeda", fontsize=12)
-ax.set_title("Hubungan Suhu dan Peminjaman Sepeda", fontsize=14)
+# Visualisasi Suhu vs Jumlah Peminjaman
+fig, ax = plt.subplots(figsize=(12, 5))
+sns.lineplot(data=weather_resampled, x='dteday', y='temp_day', label='Suhu (°C)', color='r')
+sns.lineplot(data=weather_resampled, x='dteday', y='cnt_day', label='Total Peminjaman', color='b')
+plt.xticks(rotation=45)
+plt.title('Pengaruh Suhu terhadap Jumlah Peminjaman Sepeda', fontsize=14)
+plt.xlabel('Bulan', fontsize=12)
+plt.ylabel('Suhu / Jumlah Peminjaman', fontsize=12)
+plt.legend()
+plt.grid(True)
 st.pyplot(fig)
 
 st.write("🔍 **Kesimpulan:** Semakin tinggi suhu, semakin banyak sepeda yang dipinjam. Namun, pada suhu ekstrem, peminjaman cenderung berkurang.")
 
-# -- VISUALISASI 4: Peminjaman Sepeda di Hari Kerja vs Hari Libur --
-st.subheader("Peminjaman Sepeda di Hari Kerja vs Hari Libur")
-
-workingday_df = main_df.groupby("workingday_hour")["cnt_hour"].mean().reset_index()
-workingday_labels = {0: "Hari Libur", 1: "Hari Kerja"}
-workingday_df["workingday_hour"] = workingday_df["workingday_hour"].map(workingday_labels)
-
-fig, ax = plt.subplots(figsize=(10, 5))
-sns.barplot(x="workingday_hour", y="cnt_hour", data=workingday_df, palette="viridis", ax=ax)
-ax.set_xlabel("Jenis Hari", fontsize=12)
-ax.set_ylabel("Rata-rata Peminjaman Sepeda", fontsize=12)
-ax.set_title("Peminjaman Sepeda di Hari Kerja vs Hari Libur", fontsize=14)
+# Visualisasi Kelembaban vs Jumlah Peminjaman
+fig, ax = plt.subplots(figsize=(12, 5))
+sns.lineplot(data=weather_resampled, x='dteday', y='hum_day', label='Kelembaban (%)', color='g')
+sns.lineplot(data=weather_resampled, x='dteday', y='cnt_day', label='Total Peminjaman', color='b')
+plt.xticks(rotation=45)
+plt.title('Pengaruh Kelembaban terhadap Jumlah Peminjaman Sepeda', fontsize=14)
+plt.xlabel('Bulan', fontsize=12)
+plt.ylabel('Kelembaban / Jumlah Peminjaman', fontsize=12)
+plt.legend()
+plt.grid(True)
 st.pyplot(fig)
 
-st.write("🔍 **Kesimpulan:** Lebih banyak sepeda dipinjam pada hari kerja dibandingkan hari libur, menunjukkan bahwa banyak orang menggunakan sepeda untuk keperluan transportasi.")
+st.write("🔍 **Kesimpulan:** Kelembaban yang tinggi dapat mempengaruhi minat pengguna untuk menyewa sepeda.")
 
-# -- VISUALISASI 5: Pengaruh Kecepatan Angin terhadap Peminjaman --
-st.subheader("Pengaruh Kecepatan Angin terhadap Peminjaman Sepeda")
-
-fig, ax = plt.subplots(figsize=(10, 5))
-sns.scatterplot(x="windspeed_hour", y="cnt_hour", data=main_df, alpha=0.5, color="#32CD32", ax=ax)
-ax.set_xlabel("Kecepatan Angin (Normalized)", fontsize=12)
-ax.set_ylabel("Jumlah Peminjaman Sepeda", fontsize=12)
-ax.set_title("Hubungan Kecepatan Angin dan Peminjaman Sepeda", fontsize=14)
+# Visualisasi Kecepatan Angin vs Jumlah Peminjaman
+fig, ax = plt.subplots(figsize=(12, 5))
+sns.lineplot(data=weather_resampled, x='dteday', y='windspeed_day', label='Kecepatan Angin (m/s)', color='c')
+sns.lineplot(data=weather_resampled, x='dteday', y='cnt_day', label='Total Peminjaman', color='b')
+plt.xticks(rotation=45)
+plt.title('Pengaruh Kecepatan Angin terhadap Jumlah Peminjaman Sepeda', fontsize=14)
+plt.xlabel('Bulan', fontsize=12)
+plt.ylabel('Kecepatan Angin / Jumlah Peminjaman', fontsize=12)
+plt.legend()
+plt.grid(True)
 st.pyplot(fig)
 
 st.write("🔍 **Kesimpulan:** Kecepatan angin yang tinggi dapat mengurangi jumlah peminjaman sepeda, karena kondisi berkendara menjadi lebih sulit.")
 
-from datetime import datetime
+# -- VISUALISASI 3: Perbedaan Penyewaan Sepeda antara Hari Kerja dan Akhir Pekan --
+st.subheader("3. Perbedaan Penyewaan Sepeda antara Hari Kerja dan Akhir Pekan")
 
-# --RFM ANALYSIS--
-st.subheader("📊 RFM Analysis untuk Bike Sharing")
+workingday_resampled = main_df.resample('W', on='dteday').agg({
+    'cnt_day': 'sum',
+    'workingday_day': 'mean'  # Rata-rata hari kerja dalam seminggu (0 = akhir pekan, 1 = hari kerja)
+}).reset_index()
 
-# Menentukan tanggal referensi (maksimum tanggal dalam dataset)
-reference_date = main_df["dteday"].max()
+# Menghitung rata-rata peminjaman untuk hari kerja dan akhir pekan
+avg_rentals = workingday_resampled.groupby('workingday_day')['cnt_day'].mean().reset_index()
+avg_rentals['workingday_day'] = avg_rentals['workingday_day'].map({0: 'Akhir Pekan', 1: 'Hari Kerja'})
 
-# RFM Calculation
-rfm_df = main_df.groupby("dteday").agg(
-    Recency=("dteday", lambda x: (reference_date - x.max()).days),
-    Frequency=("cnt_day", "sum"),  # Total peminjaman per hari
-    Monetary=("cnt_day", "sum")  # Menggunakan jumlah peminjaman sebagai proxy Monetary
-).reset_index()
-
-# Normalisasi Data RFM agar lebih mudah dianalisis
-rfm_scaled = rfm_df[["Recency", "Frequency", "Monetary"]]
-rfm_scaled = (rfm_scaled - rfm_scaled.min()) / (rfm_scaled.max() - rfm_scaled.min())
-
-# Scatter Plot: Recency vs Frequency
 fig, ax = plt.subplots(figsize=(8, 5))
-sns.scatterplot(x=rfm_scaled["Recency"], y=rfm_scaled["Frequency"], alpha=0.7, color="blue", ax=ax)
-ax.set_xlabel("Recency (Normalized)")
-ax.set_ylabel("Frequency (Normalized)")
-ax.set_title("Hubungan Recency dan Frequency dalam RFM Analysis")
+sns.barplot(data=avg_rentals, x='workingday_day', y='cnt_day', palette='coolwarm', ax=ax)
+plt.title('Rata-rata Penyewaan Sepeda pada Hari Kerja dan Akhir Pekan', fontsize=14)
+plt.xlabel('Hari Kerja', fontsize=12)
+plt.ylabel('Rata-rata Total Peminjaman', fontsize=12)
+plt.grid(axis='y')
 st.pyplot(fig)
 
-st.write("🔍 **Kesimpulan:** Pelanggan dengan Frequency tinggi tetapi Recency rendah adalah pengguna aktif yang baru-baru ini menggunakan layanan sepeda.")
+st.write("🔍 **Kesimpulan:** Lebih banyak sepeda dipinjam pada hari kerja dibandingkan akhir pekan, menunjukkan bahwa banyak orang menggunakan sepeda untuk keperluan transportasi.")
 
-# Scatter Plot: Frequency vs Monetary
-fig, ax = plt.subplots(figsize=(8, 5))
-sns.scatterplot(x=rfm_scaled["Frequency"], y=rfm_scaled["Monetary"], alpha=0.7, color="red", ax=ax)
-ax.set_xlabel("Frequency (Normalized)")
-ax.set_ylabel("Monetary (Normalized)")
-ax.set_title("Hubungan Frequency dan Monetary dalam RFM Analysis")
+# -- VISUALISASI 4: Penggunaan Sepeda Berdasarkan Jam --
+st.subheader("4. Penggunaan Sepeda Berdasarkan Jam")
+
+hourly_resampled = main_df.groupby(['hr', 'season_hour']).agg({
+    'casual_hour': 'sum',
+    'registered_hour': 'sum',
+    'cnt_hour': 'sum'
+}).reset_index()
+
+fig, ax = plt.subplots(figsize=(12, 6))
+sns.lineplot(data=hourly_resampled, x='hr', y='cnt_hour', label='Total Peminjaman', color='b')
+sns.lineplot(data=hourly_resampled, x='hr', y='casual_hour', label='Pengguna Kasual', color='g')
+sns.lineplot(data=hourly_resampled, x='hr', y='registered_hour', label='Pengguna Terdaftar', color='r')
+plt.title('Penggunaan Sepeda Berdasarkan Jam', fontsize=14)
+plt.xlabel('Jam', fontsize=12)
+plt.ylabel('Jumlah Peminjaman', fontsize=12)
+plt.xticks(range(0, 24))
+plt.legend()
+plt.grid(True)
 st.pyplot(fig)
 
-st.write("🔍 **Kesimpulan:** Semakin sering seseorang menggunakan layanan ini, semakin besar total peminjaman yang mereka lakukan, sesuai dengan pola loyalitas pengguna.")
+st.write("🔍 **Kesimpulan:** Penggunaan sepeda mencapai puncaknya pada jam sibuk, terutama di pagi dan sore hari.")
+
+# -- VISUALISASI 5: Pola Penggunaan Sepeda Berdasarkan Musim --
+st.subheader("Pola Penggunaan Sepeda Berdasarkan Musim")
+
+fig, ax = plt.subplots(figsize=(12, 6))
+sns.barplot(data=hourly_resampled, x='season_hour', y='cnt_hour', palette='Set2', ax=ax)
+plt.title('Pola Penggunaan Sepeda Berdasarkan Musim', fontsize=14)
+plt.xlabel('Musim', fontsize=12)
+plt.ylabel('Jumlah Peminjaman', fontsize=12)
+plt.xticks(ticks=[0, 1, 2, 3], labels=['Musim Dingin', 'Musim Semi', 'Musim Panas', 'Musim Gugur'])
+plt.grid(axis='y')
+st.pyplot(fig)
+
+st.write("🔍 **Kesimpulan:** Musim panas menunjukkan tingkat peminjaman tertinggi, sedangkan musim dingin memiliki tingkat peminjaman terendah.")
 
 # -- GEOSPASIAL ANALISYS --
 st.subheader("Geospatial Analysis: Sebaran Peminjaman Sepeda")
@@ -177,4 +194,3 @@ folium_static(heatmap_map)
 
 #terakhir
 st.caption("Copyright (c) 2025 - Bike Sharing Dashboard by [Margohan] 🚲")
-
